@@ -1,311 +1,108 @@
+Incremental
+===========
 
-Treasure Data API library for Python
-====================================
+|travis|
+|pypi|
+|coverage|
 
+Incremental is a small library that versions your Python projects.
 
-.. image:: https://travis-ci.org/treasure-data/td-client-python.svg
-   :target: https://travis-ci.org/treasure-data/td-client-python
-   :alt: Build Status
+API documentation can be found `here <https://twisted.github.io/incremental/docs/>`_.
 
 
-.. image:: https://ci.appveyor.com/api/projects/status/eol91l1ag50xee9m/branch/master?svg=true
-   :target: https://ci.appveyor.com/project/treasure-data/td-client-python/branch/master
-   :alt: Build status
-
-
-.. image:: https://coveralls.io/repos/treasure-data/td-client-python/badge.svg
-   :target: https://coveralls.io/r/treasure-data/td-client-python
-   :alt: Coverage Status
-
-
-.. image:: https://badge.fury.io/py/td-client.svg
-   :target: http://badge.fury.io/py/td-client
-   :alt: PyPI version
-
-
-Treasure Data API library for Python
-
-Requirements
-------------
-
-``td-client`` supports the following versions of Python.
-
-
-* Python 3.5+
-* PyPy
-
-Install
--------
-
-You can install the releases from `PyPI <https://pypi.python.org/>`_.
-
-.. code-block:: sh
-
-   $ pip install td-client
-
-It'd be better to install `certifi <https://pypi.python.org/pypi/certifi>`_ to enable SSL certificate verification.
-
-.. code-block:: sh
-
-   $ pip install certifi
-
-Examples
---------
-
-Please see also the examples at `Treasure Data Documentation <http://docs.treasuredata.com/articles/rest-api-python-client>`_.
-
-The td-client documentation is hosted at https://tdclient.readthedocs.io/,
-or you can go directly to the
-`API documentation <https://tdclient.readthedocs.io/en/latest/api/index.html>`_.
-
-For information on the parameters that may be used when reading particular
-types of data, see `File import parameters`_.
-
-.. _`file import parameters`:
-   https://tdclient.readthedocs.io/en/latest/api/file_import_paremeters.html
-
-Listing jobs
-^^^^^^^^^^^^
-
-Treasure Data API key will be read from environment variable ``TD_API_KEY``\ , if none is given via ``apikey=`` argument passed to ``tdclient.Client``.
-
-Treasure Data API endpoint ``https://api.treasuredata.com`` is used by default. You can override this with environment variable ``TD_API_SERVER``\ , which in turn can be overridden via ``endpoint=`` argument passed to ``tdclient.Client``. List of available Treasure Data sites and corresponding API endpoints can be found `here <https://support.treasuredata.com/hc/en-us/articles/360001474288-Sites-and-Endpoints>`_.
-
-.. code-block:: python
-
-   import tdclient
-
-   with tdclient.Client() as td:
-       for job in td.jobs():
-           print(job.job_id)
-
-Running jobs
-^^^^^^^^^^^^
-
-Running jobs on Treasure Data.
-
-.. code-block:: python
-
-   import tdclient
-
-   with tdclient.Client() as td:
-       job = td.query("sample_datasets", "SELECT COUNT(1) FROM www_access", type="hive")
-       job.wait()
-       for row in job.result():
-           print(repr(row))
-
-Running jobs via DBAPI2
-^^^^^^^^^^^^^^^^^^^^^^^
-
-td-client-python implements `PEP 0249 <https://www.python.org/dev/peps/pep-0249/>`_ Python Database API v2.0.
-You can use td-client-python with external libraries which supports Database API such like `pandas <http://pandas.pydata.org/>`_.
-
-.. code-block:: python
-
-   import pandas
-   import tdclient
-
-   def on_waiting(cursor):
-       print(cursor.job_status())
-
-   with tdclient.connect(db="sample_datasets", type="presto", wait_callback=on_waiting) as td:
-       data = pandas.read_sql("SELECT symbol, COUNT(1) AS c FROM nasdaq GROUP BY symbol", td)
-       print(repr(data))
-
-We offer another package for pandas named `pytd <https://github.com/treasure-data/pytd>`_ with some advanced features.
-You may prefer it if you need to do complicated things, such like exporting result data to Treasure Data, printing job's
-progress during long execution, etc.
-
-Importing data
-^^^^^^^^^^^^^^
-
-Importing data into Treasure Data in streaming manner, as similar as `fluentd <http://www.fluentd.org/>`_ is doing.
-
-.. code-block:: python
-
-   import sys
-   import tdclient
-
-   with tdclient.Client() as td:
-       for file_name in sys.argv[:1]:
-           td.import_file("mydb", "mytbl", "csv", file_name)
-
-
-.. Warning::
-   Importing data in streaming manner requires certain amount of time to be ready to query since schema update will be
-   executed with delay.
-
-Bulk import
-^^^^^^^^^^^
-
-Importing data into Treasure Data in batch manner.
-
-.. code-block:: python
-
-   import sys
-   import tdclient
-   import uuid
-   import warnings
-
-   if len(sys.argv) <= 1:
-       sys.exit(0)
-
-   with tdclient.Client() as td:
-       session_name = "session-{}".format(uuid.uuid1())
-       bulk_import = td.create_bulk_import(session_name, "mydb", "mytbl")
-       try:
-           for file_name in sys.argv[1:]:
-               part_name = "part-{}".format(file_name)
-               bulk_import.upload_file(part_name, "json", file_name)
-           bulk_import.freeze()
-       except:
-           bulk_import.delete()
-           raise
-       bulk_import.perform(wait=True)
-       if 0 < bulk_import.error_records:
-           warnings.warn("detected {} error records.".format(bulk_import.error_records))
-       if 0 < bulk_import.valid_records:
-           print("imported {} records.".format(bulk_import.valid_records))
-       else:
-           raise(RuntimeError("no records have been imported: {}".format(bulk_import.name)))
-       bulk_import.commit(wait=True)
-       bulk_import.delete()
-
-
-If you want to import data as `msgpack <https://msgpack.org/>`_ format, you can write as follows:
-
-.. code-block:: python
-
-   import io
-   import time
-   import uuid
-   import warnings
-
-   import tdclient
-
-   t1 = int(time.time())
-   l1 = [{"a": 1, "b": 2, "time": t1}, {"a": 3, "b": 9, "time": t1}]
-
-   with tdclient.Client() as td:
-       session_name = "session-{}".format(uuid.uuid1())
-       bulk_import = td.create_bulk_import(session_name, "mydb", "mytbl")
-       try:
-           _bytes = tdclient.util.create_msgpack(l1)
-           bulk_import.upload_file("part", "msgpack", io.BytesIO(_bytes))
-           bulk_import.freeze()
-       except:
-           bulk_import.delete()
-           raise
-       bulk_import.perform(wait=True)
-       # same as the above example
-
-
-Changing how CSV and TSV columns are read
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The ``td-client`` package will generally make sensible choices on how to read
-the columns in CSV and TSV data, but sometimes the user needs to override the
-default mechanism. This can be done using the optional `file import
-parameters`_ ``dtypes`` and ``converters``.
-
-For instance, consider CSV data that starts with the following records::
-
-  time,col1,col2,col3
-  1575454204,a,0001,a;b;c
-  1575454204,b,0002,d;e;f
-
-If that data is read using the defaults, it will produce values that look
-like:
-
-.. code:: python
-
-  1575454204, "a", 1, "a;b;c"
-  1575454204, "b", 2, "d;e;f"
-  
-that is, an integer, a string, an integer and another string.
-
-If the user wants to keep the leading zeroes in ``col2``, then they can
-specify the column datatype as string. For instance, using
-``bulk_import.upload_file`` to read data from ``input_data``:
-
-.. code:: python
-
-    bulk_import.upload_file(
-        "part", "msgpack", input_data,
-        dtypes={"col2": "str"},
-    )
-
-which would produce:
-
-.. code:: python
-
-  1575454204, "a", "0001", "a;b;c"
-  1575454204, "b", "0002", "d;e;f"
-
-If they also wanted to treat ``col3`` as a sequence of strings, separated by
-semicolons, then they could specify a function to process ``col3``:
-
-.. code:: python
-
-    bulk_import.upload_file(
-        "part", "msgpack", input_data,
-        dtypes={"col2": "str"},
-        converters={"col3", lambda x: x.split(";")},
-    )
-
-which would produce:
-
-.. code:: python
-
-  1575454204, "a", "0001", ["a", "b", "c"]
-  1575454204, "b", "0002", ["d", "e", "f"]
-
-Development
+Quick Start
 -----------
 
-Running tests
-^^^^^^^^^^^^^
+Add this to your ``setup.py``\ 's ``setup()`` call, removing any other versioning arguments:
 
-Run tests.
+.. code::
 
-.. code-block:: sh
+   setup(
+       use_incremental=True,
+       setup_requires=['incremental'],
+       install_requires=['incremental'], # along with any other install dependencies
+       ...
+   }
 
-   $ python setup.py test
 
-Running tests (tox)
-^^^^^^^^^^^^^^^^^^^
+Install Incremental to your local environment with ``pip install incremental[scripts]``.
+Then run ``python -m incremental.update <projectname> --create``.
+It will create a file in your package named ``_version.py`` and look like this:
 
-You can run tests against all supported Python versions. I'd recommend you to install `pyenv <https://github.com/yyuu/pyenv>`_ to manage Pythons.
+.. code::
 
-.. code-block:: sh
+   from incremental import Version
 
-   $ pyenv shell system
-   $ for version in $(cat .python-version); do [ -d "$(pyenv root)/versions/${version}" ] || pyenv install "${version}"; done
-   $ pyenv shell --unset
+   __version__ = Version("widgetbox", 17, 1, 0)
+   __all__ = ["__version__"]
 
-Install `tox <https://pypi.python.org/pypi/tox>`_.
 
-.. code-block:: sh
+Then, so users of your project can find your version, in your root package's ``__init__.py`` add:
 
-   $ pip install tox
+.. code::
 
-Then, run ``tox``.
+   from ._version import __version__
 
-.. code-block:: sh
 
-   $ tox
+Subsequent installations of your project will then use Incremental for versioning.
 
-Release
-^^^^^^^
 
-Release to PyPI. Ensure you installed twine.
+Incremental Versions
+--------------------
 
-.. code-block:: sh
+``incremental.Version`` is a class that represents a version of a given project.
+It is made up of the following elements (which are given during instantiation):
 
-   $ python setup.py bdist_wheel sdist
-   $ twine upload dist/*
+- ``package`` (required), the name of the package this ``Version`` represents.
+- ``major``, ``minor``, ``micro`` (all required), the X.Y.Z of your project's ``Version``.
+- ``release_candidate`` (optional), set to 0 or higher to mark this ``Version`` being of a release candidate (also sometimes called a "prerelease").
+- ``post`` (optional), set to 0 or higher to mark this ``Version`` as a postrelease.
+- ``dev`` (optional), set to 0 or higher to mark this ``Version`` as a development release.
 
-License
--------
+You can extract a PEP-440 compatible version string by using the ``.public()`` method, which returns a ``str`` containing the full version. This is the version you should provide to users, or publicly use. An example output would be ``"13.2.0"``, ``"17.1.2dev1"``, or ``"18.8.0rc2"``.
 
-Apache Software License, Version 2.0
+Calling ``repr()`` with a ``Version`` will give a Python-source-code representation of it, and calling ``str()`` with a ``Version`` will provide a string similar to ``'[Incremental, version 16.10.1]'``.
+
+
+Updating
+--------
+
+Incremental includes a tool to automate updating your Incremental-using project's version called ``incremental.update``.
+It updates the ``_version.py`` file and automatically updates some uses of Incremental versions from an indeterminate version to the current one.
+It requires ``click`` from PyPI.
+
+``python -m incremental.update <projectname>`` will perform updates on that package.
+The commands that can be given after that will determine what the next version is.
+
+- ``--newversion=<version>``, to set the project version to a fully-specified version (like 1.2.3, or 17.1.0dev1).
+- ``--rc``, to set the project version to ``<year-2000>.<month>.0rc1`` if the current version is not a release candidate, or bump the release candidate number by 1 if it is.
+- ``--dev``, to set the project development release number to 0 if it is not a development release, or bump the development release number by 1 if it is.
+- ``--patch``, to increment the patch number of the release. This will also reset the release candidate number, pass ``--rc`` at the same time to increment the patch number and make it a release candidate.
+- ``--post``, to set the project postrelease number to 0 if it is not a postrelease, or bump the postrelease number by 1 if it is. This will also reset the release candidate and development release numbers.
+
+If you give no arguments, it will strip the release candidate number, making it a "full release".
+
+Incremental supports "indeterminate" versions, as a stand-in for the next "full" version. This can be used when the version which will be displayed to the end-user is unknown (for example "introduced in" or "deprecated in"). Incremental supports the following indeterminate versions:
+
+- ``Version("<projectname>", "NEXT", 0, 0)``
+- ``<projectname> NEXT``
+
+When you run ``python -m incremental.update <projectname> --rc``, these will be updated to real versions (assuming the target final version is 17.1.0):
+
+- ``Version("<projectname>", 17, 1, 0, release_candidate=1)``
+- ``<projectname> 17.1.0rc1``
+
+Once the final version is made, it will become:
+
+- ``Version("<projectname>", 17, 1, 0)``
+- ``<projectname> 17.1.0``
+
+
+.. |coverage| image:: https://codecov.io/github/twisted/incremental/coverage.svg?branch=master
+.. _coverage: https://codecov.io/github/twisted/incremental
+
+.. |travis| image:: https://travis-ci.org/twisted/incremental.svg?branch=master
+.. _travis: https://travis-ci.org/twisted/incremental
+
+.. |pypi| image:: http://img.shields.io/pypi/v/incremental.svg
+.. _pypi: https://pypi.python.org/pypi/incremental
