@@ -1,4 +1,4 @@
-name: Python package
+name: Python application
 
 on:
   push:
@@ -11,18 +11,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
-        python-version: [2.7, 3.4, 3.5, 3.6, 3.7-dev]
-        env:
-          - TOXENV=py27
-          - TOXENV=py34
-          - TOXENV=py35
-          - TOXENV=py36
-          - TOXENV=py37
-          - TOXENV=flake8
-          - TOXENV=isort
-          - TOXENV=black
+        python-version: ['3.9']
+
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
@@ -32,8 +25,15 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install tox
-    - name: Run Tox
+        pip install -r requirements.txt
+        pip install -r test_requirements.txt
+    - name: Run tests
+      run: |
+        pip install pytest
+        pytest
+    - name: Upload coverage to Coveralls
       env:
-        TOXENV: ${{ matrix.env }}
-      run: tox
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        pip install coveralls
+        coveralls
