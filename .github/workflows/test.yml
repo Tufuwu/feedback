@@ -13,30 +13,27 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.7', '3.8', '3.9']
-
+        python-version: [2.7, 3.4, 3.5, 3.6, 3.7-dev]
+        env:
+          - TOXENV=py27
+          - TOXENV=py34
+          - TOXENV=py35
+          - TOXENV=py36
+          - TOXENV=py37
+          - TOXENV=flake8
+          - TOXENV=isort
+          - TOXENV=black
     steps:
     - uses: actions/checkout@v2
-
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
-
     - name: Install dependencies
       run: |
-        if [ "${{ matrix.python-version }}" == "3.7" ]; then pip install 'setuptools<=60.9.0'; fi
-        python setup.py -q install
-        pip install pylint yapf pytype
-
-    - name: Run tests
-      run: python setup.py test
-
-    - name: Run pylint
-      run: pylint comment_parser
-
-    - name: Run pytype
-      run: pytype
-
-    - name: Run yapf
-      run: yapf -drp comment_parser
+        python -m pip install --upgrade pip
+        pip install tox
+    - name: Run Tox
+      env:
+        TOXENV: ${{ matrix.env }}
+      run: tox
