@@ -4,35 +4,36 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        python-version: [2.7, 3.8]
+        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
 
     steps:
     - uses: actions/checkout@v2
-      with:
-        fetch-depth: 10
-
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
-
     - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y git build-essential automake libtool python-dev gettext swig
-        pip install flake8
+      run: pip install tox
+    - name: Run tests
+      run: tox
 
-    - name: Run flake8
-      run: flake8 --version
-
-    - name: Compile AutoBouquetsMaker enigma2 plugin
-      run: |
-        python -m compileall .
-        find . -type f -name "*.po" -exec msgfmt {} -o {}.mo \;
-        flake8 --ignore=W191,E128,E501,E722 . --exit-zero
+  notify:
+    if: failure()
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Send Slack notification
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
